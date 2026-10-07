@@ -103,7 +103,10 @@ summary { cursor: pointer; font-size: 0.9rem; }
 .alta input[name='gramos'] { flex: 0 0 64px; }
 .registro { flex-wrap: wrap; }
 .registro input[type='date'] { flex: 1 1 100%; }
-.registro input[type='number'] { flex: 1 1 60px; }
+.registro label { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; font-size: 0.75rem; color: var(--suave); }
+.registro label input { font-size: 1rem; color: var(--texto); } /* <16px hace zoom en iOS */
+.registro button { align-self: flex-end; }
+.ejercicio details { margin-left: 0; margin-top: 8px; }
 .ultimo { margin: 4px 0 0; color: var(--suave); }
 .ultimo b { color: var(--texto); }
 .segmentos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 12px; }

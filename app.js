@@ -188,9 +188,9 @@ async function vistaGym() {
         <p class="ultimo">${regs[0] ? `Último: <b>${textoReg(regs[0])}</b> · ${fechaCorta(regs[0].fecha)}` : 'Sin registros todavía'}</p>
         <form data-form="registro" data-ejercicio="${e.id}" class="alta registro">
           <input name="fecha" type="date" value="${hoy()}" required>
-          <input name="peso" type="number" inputmode="decimal" step="any" min="0" placeholder="kg" value="${regs[0]?.peso ?? ''}">
-          <input name="series" type="number" inputmode="numeric" min="1" placeholder="series" value="${regs[0]?.series ?? ''}">
-          <input name="reps" type="number" inputmode="numeric" min="1" placeholder="reps" value="${regs[0]?.reps ?? ''}">
+          <label>kg<input name="peso" type="number" inputmode="decimal" step="any" min="0" value="${regs[0]?.peso ?? ''}"></label>
+          <label>series<input name="series" type="number" inputmode="numeric" min="1" value="${regs[0]?.series ?? ''}"></label>
+          <label>reps<input name="reps" type="number" inputmode="numeric" min="1" value="${regs[0]?.reps ?? ''}"></label>
           <button class="pri">Anotar</button>
         </form>
         ${regs.length ? `<details><summary>Historial (${regs.length})</summary>
