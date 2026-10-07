@@ -1,6 +1,6 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
-import { COMIDAS, fechaISO, deISO, esGym, estadoDia, celdasMes } from './logica.js';
+import { COMIDAS, CHECKS, fechaISO, deISO, esGym, estadoDia, celdasMes } from './logica.js';
 
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 const $main = document.querySelector('main');
@@ -65,8 +65,9 @@ async function vistaDia() {
     return items.length ? `<details><summary>Ver lista (${items.length})</summary><ol>${items.map((i) => `<li>${esc(i.texto)}</li>`).join('')}</ol></details>` : '';
   };
   const dsem = deISO(f).getDay();
+  const hechos = CHECKS.filter((k) => dia[k]).length;
   const entreno = esGym(f)
-    ? check('entreno', `Gym · rutina del ${NOMBRE_DIA[dsem].toLowerCase()}`) +
+    ? check('entreno', `Gym, rutina del ${NOMBRE_DIA[dsem].toLowerCase()}`) +
       (st.ejercicios.some((e) => e.dia === dsem)
         ? `<details><summary>Ver ejercicios</summary><ol>${st.ejercicios.filter((e) => e.dia === dsem).map((e) => `<li>${esc(e.nombre)}</li>`).join('')}</ol></details>`
         : '')
@@ -74,19 +75,28 @@ async function vistaDia() {
       `<label class="minutos">Minutos <input type="number" inputmode="numeric" min="0" data-campo="eliptico_min" value="${dia.eliptico_min ?? ''}" ${dis}></label>`;
 
   $main.innerHTML = `
-    <header class="nav-dia">
-      <button data-acc="mover-dia" data-delta="-1" aria-label="Día anterior">‹</button>
-      <div><h1>${cap(deISO(f).toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' }))}</h1>
-        <span class="estado ${estadoDia(dia)}">${{ completo: 'Todo cumplido', parcial: 'Falta algo', nada: 'Sin registrar' }[estadoDia(dia)]}</span></div>
-      <button data-acc="mover-dia" data-delta="1" aria-label="Día siguiente">›</button>
+    <header class="cabecera">
+      <div>
+        <div class="dia-sem">${esHoy ? 'Hoy, ' : ''}${deISO(f).toLocaleDateString('es-AR', { weekday: 'long' })}</div>
+        <div class="fecha"><span class="display num">${deISO(f).getDate()}</span><span class="mes">${deISO(f).toLocaleDateString('es-AR', { month: 'long' })}</span></div>
+      </div>
+      <div class="flechas">
+        <button data-acc="mover-dia" data-delta="-1" aria-label="Día anterior">‹</button>
+        <button data-acc="mover-dia" data-delta="1" aria-label="Día siguiente">›</button>
+      </div>
     </header>
+    <div class="progreso" role="img" aria-label="${hechos} de ${CHECKS.length} cumplidos">
+      <div class="barra">${CHECKS.map((k) => `<span class="${dia[k] ? 'on' : ''}"></span>`).join('')}</div>
+      <output>${hechos === CHECKS.length ? 'Todo cumplido' : `${hechos} de ${CHECKS.length}`}</output>
+    </div>
     ${esHoy ? '' : `<div class="barra-editar">
       <button data-acc="ir-hoy" class="sec">Ir a hoy</button>
       <button data-acc="editar" class="${st.editando ? 'pri' : 'sec'}">${st.editando ? 'Listo' : 'Editar día'}</button></div>`}
     <section><h2>Comidas</h2>
       ${COMIDAS.map((c) => {
         const g = planComida(c);
-        const detalle = Object.entries(g).map(([comp, ops]) => `<small>${esc(comp)}: ${ops.map(textoOpcion).join(' / ')}</small>`).join('');
+        const detalle = Object.entries(g).map(([comp, ops]) =>
+          `<span class="plan"><span class="comp">${esc(comp)}</span>${ops.map((o) => `<span class="chip">${textoOpcion(o)}</span>`).join('')}</span>`).join('');
         return check(c, cap(c), detalle);
       }).join('')}
     </section>
@@ -119,13 +129,15 @@ async function vistaCalendario() {
   const [a, m] = st.mes;
   const dias = await q(db.from('dias').select('*').gte('fecha', fechaISO(new Date(a, m, 1))).lte('fecha', fechaISO(new Date(a, m + 1, 0))));
   const porFecha = Object.fromEntries(dias.map((d) => [d.fecha, d]));
-  const completos = dias.filter((d) => estadoDia(d) === 'completo').length;
+  const cuenta = (e) => dias.filter((d) => estadoDia(d) === e).length;
   const h = hoy();
   $main.innerHTML = `
-    <header class="nav-dia">
-      <button data-acc="mover-mes" data-delta="-1" aria-label="Mes anterior">‹</button>
-      <h1>${cap(new Date(a, m, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' }))}</h1>
-      <button data-acc="mover-mes" data-delta="1" aria-label="Mes siguiente">›</button>
+    <header class="cab-mes">
+      <h1>${cap(new Date(a, m, 1).toLocaleDateString('es-AR', { month: 'long' }))} <span style="color:var(--suave)">${a}</span></h1>
+      <div class="flechas">
+        <button data-acc="mover-mes" data-delta="-1" aria-label="Mes anterior">‹</button>
+        <button data-acc="mover-mes" data-delta="1" aria-label="Mes siguiente">›</button>
+      </div>
     </header>
     <div class="cal">
       ${['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d) => `<span class="cab">${d}</span>`).join('')}
@@ -133,8 +145,10 @@ async function vistaCalendario() {
         ? `<button data-acc="ir-dia" data-fecha="${f}" class="${estadoDia(porFecha[f])} ${f === h ? 'hoy' : ''}">${deISO(f).getDate()}</button>`
         : '<span></span>')).join('')}
     </div>
-    <p class="leyenda"><i class="completo"></i> Todo <i class="parcial"></i> Falta algo <i></i> Nada</p>
-    <p class="leyenda">${completos} día${completos === 1 ? '' : 's'} completo${completos === 1 ? '' : 's'} este mes</p>`;
+    <div class="resumen">
+      <div><span class="display">${cuenta('completo')}</span><small><i></i>Días con todo cumplido</small></div>
+      <div><span class="display">${cuenta('parcial')}</span><small><i class="parcial"></i>Días con algo pendiente</small></div>
+    </div>`;
 }
 
 // ---------- Plan (dieta y listas) ----------
@@ -154,10 +168,10 @@ function vistaPlan() {
       <section><h2>${cap(c)}</h2>
         ${Object.entries(planComida(c)).map(([comp, ops]) => `
           <div class="grupo"><b>${esc(comp)}</b>
-            ${ops.map((i) => `<div class="fila">${textoOpcion(i)}${botonesOrden('dieta_items', i.id)}</div>`).join('')}</div>`).join('') || '<p class="vacio">Sin cargar</p>'}
+            ${ops.map((i) => `<div class="fila">${textoOpcion(i)}${botonesOrden('dieta_items', i.id)}</div>`).join('')}</div>`).join('') || '<p class="vacio">Todavía sin cargar.</p>'}
         <form data-form="dieta" data-comida="${c}" class="alta">
-          <input name="componente" placeholder="Componente (Proteína)" list="componentes" required>
-          <input name="opcion" placeholder="Opción (pollo)" required>
+          <input name="componente" placeholder="Grupo (ej: Proteína)" list="componentes" required>
+          <input name="opcion" placeholder="Opción (ej: pollo)" required>
           <input name="gramos" type="number" inputmode="decimal" step="any" min="0" placeholder="g">
           <button class="pri">+</button>
         </form>
@@ -172,12 +186,27 @@ function vistaPlan() {
 }
 
 // ---------- Gym ----------
+// Mini gráfica de los últimos 12 pesos (de más viejo a más nuevo).
+function sparkline(pesos) {
+  const v = pesos.slice(-12).map(Number);
+  if (v.length < 2) return '';
+  const min = Math.min(...v), rango = Math.max(...v) - min || 1;
+  const pts = v.map((p, i) => [(i / (v.length - 1)) * 104 + 3, 37 - ((p - min) / rango) * 32]);
+  const [ux, uy] = pts.at(-1);
+  return `<svg class="spark" viewBox="0 0 110 40" aria-hidden="true">
+    <polyline points="${pts.map((p) => p.join(',')).join(' ')}" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${ux}" cy="${uy}" r="3.5" fill="currentColor"/></svg>`;
+}
+
 async function vistaGym() {
   const ejercicios = st.ejercicios.filter((e) => e.dia === st.gymDia);
   const registros = ejercicios.length
     ? await q(db.from('registros_ejercicio').select('*').in('ejercicio_id', ejercicios.map((e) => e.id)).order('fecha', { ascending: false }).order('id', { ascending: false }))
     : [];
-  const textoReg = (r) => [r.peso != null && `${r.peso} kg`, r.series && r.reps && `${r.series}×${r.reps}`].filter(Boolean).join(' · ');
+  const textoReg = (r) => [r.peso != null && `${r.peso} kg`, r.series && r.reps && `${r.series}×${r.reps}`].filter(Boolean).join(', ');
+  const marca = (r) => `<div>
+      <div class="display peso">${r.peso ?? '–'}<small>kg</small></div>
+      <div class="detalle">${r.series && r.reps ? `${r.series} series de ${r.reps}, ` : ''}${fechaCorta(r.fecha)}</div></div>`;
   $main.innerHTML = `
     <h1>Gym</h1>
     <div class="segmentos">${[1, 3, 5].map((d) => `<button data-acc="gym-dia" data-dia="${d}" class="${d === st.gymDia ? 'pri' : 'sec'}">${NOMBRE_DIA[d]}</button>`).join('')}</div>
@@ -185,7 +214,7 @@ async function vistaGym() {
       const regs = registros.filter((r) => r.ejercicio_id === e.id);
       return `<section class="ejercicio">
         <div class="fila"><h2>${esc(e.nombre)}</h2>${botonesOrden('ejercicios', e.id)}</div>
-        <p class="ultimo">${regs[0] ? `Último: <b>${textoReg(regs[0])}</b> · ${fechaCorta(regs[0].fecha)}` : 'Sin registros todavía'}</p>
+        ${regs[0] ? `<div class="marca">${marca(regs[0])}${sparkline(regs.map((r) => r.peso).filter((p) => p != null).reverse())}</div>` : '<p class="vacio">Anotá el primer peso abajo.</p>'}
         <form data-form="registro" data-ejercicio="${e.id}" class="alta registro">
           <input name="fecha" type="date" value="${hoy()}" required>
           <label>kg<input name="peso" type="number" inputmode="decimal" step="any" min="0" value="${regs[0]?.peso ?? ''}"></label>

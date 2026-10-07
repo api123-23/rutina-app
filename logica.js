@@ -2,7 +2,7 @@
 
 export const COMIDAS = ['desayuno', 'almuerzo', 'merienda', 'cena'];
 export const DIAS_GYM = [1, 3, 5]; // lunes, miércoles, viernes
-const CHECKS = [...COMIDAS, 'hipopresivos', 'estiramientos', 'entreno'];
+export const CHECKS = [...COMIDAS, 'hipopresivos', 'estiramientos', 'entreno'];
 
 // YYYY-MM-DD en hora local (toISOString usaría UTC y cambiaría el día de noche).
 export function fechaISO(d) {
