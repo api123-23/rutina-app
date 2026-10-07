@@ -1,8 +1,6 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { COMIDAS, CHECKS, fechaISO, deISO, esGym, estadoDia, celdasMes } from './logica.js';
 
-const db = createClient(SUPABASE_URL, SUPABASE_KEY);
 const $main = document.querySelector('main');
 const hoy = () => fechaISO(new Date());
 const NOMBRE_DIA = { 1: 'Lunes', 3: 'Miércoles', 5: 'Viernes' };
@@ -26,23 +24,91 @@ const st = {
   ejercicios: [],
 };
 
-// Toda llamada a Supabase pasa por acá: si falla, se avisa (no se pierde un check en silencio).
-async function q(consulta) {
-  const { data, error } = await consulta;
-  if (error) {
-    alert('No se pudo guardar/cargar: ' + error.message);
-    throw error;
+// ---------- Datos: PostgREST directo (sin librería) ----------
+const HEADERS = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
+let edicion = 0; // sube con cada escritura: una lectura que empezó antes no pisa lo editado
+
+async function api(ruta, { method = 'GET', body, prefer, silencioso = false } = {}) {
+  if (method !== 'GET') edicion++;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/${ruta}`, {
+      method,
+      headers: prefer ? { ...HEADERS, Prefer: prefer } : HEADERS,
+      body: body && JSON.stringify(body),
+    });
+    const texto = await r.text();
+    if (!r.ok) throw new Error((texto && JSON.parse(texto).message) || r.statusText);
+    return texto ? JSON.parse(texto) : null;
+  } catch (e) {
+    // Las escrituras siempre avisan: no se pierde un check en silencio.
+    if (!silencioso) alert('No se pudo guardar: ' + (e.message === 'Failed to fetch' || e.message === 'Load failed' ? 'sin conexión' : e.message));
+    throw e;
   }
-  return data;
+}
+const insertar = (tabla, fila) => api(tabla, { method: 'POST', body: fila, prefer: 'return=minimal' });
+const actualizar = (tabla, id, cambios) => api(`${tabla}?id=eq.${id}`, { method: 'PATCH', body: cambios, prefer: 'return=minimal' });
+const borrarFila = (tabla, id) => api(`${tabla}?id=eq.${id}`, { method: 'DELETE' });
+
+// ---------- Caché (memoria + localStorage): las secciones se pintan al instante ----------
+const CLAVE_LS = 'rutina-cache-v1';
+const cache = new Map();
+try { Object.entries(JSON.parse(localStorage.getItem(CLAVE_LS)) ?? {}).forEach(([k, v]) => cache.set(k, v)); } catch {}
+let guardadoPendiente;
+function guardarCache(clave, valor) {
+  cache.set(clave, valor);
+  clearTimeout(guardadoPendiente);
+  guardadoPendiente = setTimeout(() => {
+    try { localStorage.setItem(CLAVE_LS, JSON.stringify(Object.fromEntries(cache))); } catch {}
+  }, 300);
+}
+const invalidar = (prefijo) => [...cache.keys()].filter((k) => k.startsWith(prefijo)).forEach((k) => cache.delete(k));
+
+// Trae y guarda en caché. Devuelve undefined si mientras tanto hubo una edición (el dato ya es viejo).
+async function traer({ clave, ruta, map = (x) => x }) {
+  const e = edicion;
+  const datos = map(await api(ruta, { silencioso: true }));
+  if (e !== edicion) return undefined;
+  guardarCache(clave, datos);
+  return datos;
 }
 
+// De dónde sale cada sección (plan solo usa la base).
+const FUENTES = {
+  dia: () => ({ clave: `dia:${st.fecha}`, ruta: `dias?fecha=eq.${st.fecha}`, map: (r) => r[0] ?? {} }),
+  calendario: () => {
+    const [a, m] = st.mes;
+    return { clave: `mes:${a}-${m}`, ruta: `dias?fecha=gte.${fechaISO(new Date(a, m, 1))}&fecha=lte.${fechaISO(new Date(a, m + 1, 0))}` };
+  },
+  gym: () => {
+    const ids = st.ejercicios.filter((e) => e.dia === st.gymDia).map((e) => e.id);
+    return ids.length ? { clave: `gym:${ids}`, ruta: `registros_ejercicio?ejercicio_id=in.(${ids})&order=fecha.desc,id.desc` } : null;
+  },
+  plan: () => null,
+};
+
+// Dieta, listas y ejercicios. Devuelve true si cambió algo.
 async function cargarBase() {
-  [st.dieta, st.listas, st.ejercicios] = await Promise.all([
-    q(db.from('dieta_items').select('*')),
-    q(db.from('lista_items').select('*')),
-    q(db.from('ejercicios').select('*')),
-  ]);
-  [st.dieta, st.listas, st.ejercicios].forEach((l) => l.sort(porOrden));
+  const e = edicion;
+  const [dieta, listas, ejercicios] = await Promise.all(
+    ['dieta_items', 'lista_items', 'ejercicios'].map((t) => api(`${t}?select=*`, { silencioso: true }).then((l) => l.sort(porOrden))),
+  );
+  if (e !== edicion) return false;
+  const base = { dieta, listas, ejercicios };
+  const cambio = JSON.stringify(base) !== JSON.stringify(cache.get('base'));
+  Object.assign(st, base);
+  guardarCache('base', base);
+  return cambio;
+}
+
+// Refleja un cambio del día en la caché del día y del mes, para que el calendario ya lo muestre.
+function editarDiaEnCache(fila) {
+  const clave = `dia:${fila.fecha}`;
+  const dia = { ...(cache.get(clave) ?? {}), ...fila };
+  guardarCache(clave, dia);
+  const d = deISO(fila.fecha);
+  const claveMes = `mes:${d.getFullYear()}-${d.getMonth()}`;
+  const mes = cache.get(claveMes);
+  if (mes) guardarCache(claveMes, [...mes.filter((x) => x.fecha !== fila.fecha), dia]);
 }
 
 // Agrupa las opciones de una comida por grupo: { Carbohidrato: [papa, arroz, fideos], ... }. Se come una por grupo.
@@ -59,9 +125,8 @@ const textoOpcion = (i) => esc(i.opcion) + (i.gramos ? ` ${i.gramos} g` : '');
 const vt = (nombre) => `class="vt" style="--vt:${nombre}"`;
 
 // ---------- Día ----------
-async function vistaDia() {
+function vistaDia(dia) {
   const f = st.fecha;
-  const dia = (await q(db.from('dias').select('*').eq('fecha', f).maybeSingle())) ?? {};
   const esHoy = f === hoy();
   const dis = !esHoy && !st.editando ? 'disabled' : '';
   const check = (campo, titulo, detalle = '') =>
@@ -139,17 +204,19 @@ async function guardarCampo(input) {
     if (fila[campo] > 0) $main.querySelector('[data-campo="entreno"]').checked = fila.entreno = true; // minutos = hiciste elíptico
   }
   actualizarProgreso();
+  editarDiaEnCache(fila);
   try {
-    await q(db.from('dias').upsert(fila));
+    await api('dias', { method: 'POST', body: fila, prefer: 'resolution=merge-duplicates,return=minimal' });
   } catch {
+    invalidar(`dia:${st.fecha}`);
+    invalidar('mes:');
     render(); // vuelve a mostrar lo que quedó guardado de verdad
   }
 }
 
 // ---------- Calendario ----------
-async function vistaCalendario() {
+function vistaCalendario(dias) {
   const [a, m] = st.mes;
-  const dias = await q(db.from('dias').select('*').gte('fecha', fechaISO(new Date(a, m, 1))).lte('fecha', fechaISO(new Date(a, m + 1, 0))));
   const porFecha = Object.fromEntries(dias.map((d) => [d.fecha, d]));
   const cuenta = (e) => dias.filter((d) => estadoDia(d) === e).length;
   const h = hoy();
@@ -230,11 +297,8 @@ function sparkline(pesos) {
     <circle cx="${ux}" cy="${uy}" r="3.5" fill="currentColor"/></svg>`;
 }
 
-async function vistaGym() {
+function vistaGym(registros = []) {
   const ejercicios = st.ejercicios.filter((e) => e.dia === st.gymDia);
-  const registros = ejercicios.length
-    ? await q(db.from('registros_ejercicio').select('*').in('ejercicio_id', ejercicios.map((e) => e.id)).order('fecha', { ascending: false }).order('id', { ascending: false }))
-    : [];
   const textoReg = (r) => [r.peso != null && `${r.peso} kg`, r.series && r.reps && `${r.series}×${r.reps}`].filter(Boolean).join(', ');
   const marca = (r) => `<div>
       <div class="display peso">${r.peso ?? '–'}<small>kg</small></div>
@@ -276,7 +340,7 @@ async function mover(tabla, id, dir) {
   const j = grupo.indexOf(yo) + dir;
   if (j < 0 || j >= grupo.length) return;
   [grupo[j - dir], grupo[j]] = [grupo[j], grupo[j - dir]];
-  await Promise.all(grupo.map((i, k) => (i.orden === k ? null : q(db.from(tabla).update({ orden: k }).eq('id', i.id)))));
+  await Promise.all(grupo.map((i, k) => (i.orden === k ? null : actualizar(tabla, i.id, { orden: k }))));
 }
 
 // Cada acción devuelve el tipo de transición ('adelante', 'atras', 'zoom', 'seg', 'lista') o false para no re-renderizar.
@@ -320,20 +384,26 @@ const acciones = {
   subir: async (b) => { await mover(b.dataset.tabla, Number(b.dataset.id), -1); await cargarBase(); return 'lista'; },
   bajar: async (b) => { await mover(b.dataset.tabla, Number(b.dataset.id), 1); await cargarBase(); return 'lista'; },
   borrar: async (b) => {
-    const aviso = b.dataset.tabla === 'ejercicios' ? '¿Borrar el ejercicio y TODO su historial de pesos?' : '¿Borrar?';
-    if (!confirm(aviso)) return false;
-    await q(db.from(b.dataset.tabla).delete().eq('id', b.dataset.id));
-    await cargarBase();
+    const tabla = b.dataset.tabla;
+    if (!confirm(tabla === 'ejercicios' ? '¿Borrar el ejercicio y TODO su historial de pesos?' : '¿Borrar?')) return false;
+    await borrarFila(tabla, b.dataset.id);
+    if (tabla === 'registros_ejercicio') invalidar('gym:');
+    else await cargarBase();
     return 'lista';
   },
 };
 
+const filaDieta = (d, extra) => ({ ...extra, opcion: d.opcion.trim(), gramos: d.gramos || null, orden: sigOrden(st.dieta) });
 const altas = {
-  grupo: (f, d) => q(db.from('dieta_items').insert({ comida: f.dataset.comida, componente: d.grupo.trim(), opcion: d.opcion.trim(), gramos: d.gramos || null, orden: sigOrden(st.dieta) })),
-  opcion: (f, d) => q(db.from('dieta_items').insert({ comida: f.dataset.comida, componente: f.dataset.grupo, opcion: d.opcion.trim(), gramos: d.gramos || null, orden: sigOrden(st.dieta) })),
-  lista: (f, d) => q(db.from('lista_items').insert({ tipo: f.dataset.tipo, texto: d.texto.trim(), orden: sigOrden(st.listas) })),
-  ejercicio: (f, d) => q(db.from('ejercicios').insert({ dia: st.gymDia, nombre: d.nombre.trim(), orden: sigOrden(st.ejercicios) })),
-  registro: (f, d) => q(db.from('registros_ejercicio').insert({ ejercicio_id: Number(f.dataset.ejercicio), fecha: d.fecha, peso: d.peso || null, series: d.series || null, reps: d.reps || null })),
+  grupo: (f, d) => insertar('dieta_items', filaDieta(d, { comida: f.dataset.comida, componente: d.grupo.trim() })),
+  opcion: (f, d) => insertar('dieta_items', filaDieta(d, { comida: f.dataset.comida, componente: f.dataset.grupo })),
+  lista: (f, d) => insertar('lista_items', { tipo: f.dataset.tipo, texto: d.texto.trim(), orden: sigOrden(st.listas) }),
+  ejercicio: (f, d) => insertar('ejercicios', { dia: st.gymDia, nombre: d.nombre.trim(), orden: sigOrden(st.ejercicios) }),
+  registro: async (f, d) => {
+    await insertar('registros_ejercicio', { ejercicio_id: Number(f.dataset.ejercicio), fecha: d.fecha, peso: d.peso || null, series: d.series || null, reps: d.reps || null });
+    invalidar('gym:');
+    return true; // no hace falta recargar la base
+  },
 };
 
 document.addEventListener('click', async (e) => {
@@ -366,44 +436,106 @@ $main.addEventListener('submit', async (e) => {
   const boton = f.querySelector('button');
   boton.disabled = true;
   try {
-    await altas[f.dataset.form](f, Object.fromEntries(new FormData(f)));
-    await cargarBase();
+    if ((await altas[f.dataset.form](f, Object.fromEntries(new FormData(f)))) !== true) await cargarBase();
     await render('lista');
   } finally {
     boton.disabled = false;
   }
 });
 
+// ---------- Pintado ----------
 const VISTAS = { dia: vistaDia, calendario: vistaCalendario, plan: vistaPlan, gym: vistaGym };
 const sinMovimiento = matchMedia('(prefers-reduced-motion: reduce)');
 let ultimoRender = 0;
+let transicion = null;
 
-// Primero trae los datos y después cambia la pantalla dentro de una View Transition
-// (así la animación no se congela esperando la red). Sin soporte, cambia directo.
-async function render(dir = '') {
-  const id = ++ultimoRender;
-  const html = await VISTAS[st.vista]();
-  if (id !== ultimoRender) return; // otro toque más nuevo ganó
+function pintar(html, dir) {
   const aplicar = () => {
     $main.innerHTML = html;
     const activa = document.querySelector(`[data-vista="${st.vista}"]`);
     document.querySelectorAll('[data-vista]').forEach((b) => b.classList.toggle('activa', b === activa));
     activa.prepend(document.querySelector('.pildora'));
   };
+  transicion?.skipTransition(); // un toque nuevo termina la animación anterior en vez de esperarla
   if (!dir || !document.startViewTransition || sinMovimiento.matches) return aplicar();
   document.documentElement.dataset.dir = dir;
-  await document.startViewTransition(aplicar).finished.catch(() => {});
-  delete document.documentElement.dataset.dir;
+  const t = (transicion = document.startViewTransition(aplicar));
+  t.finished.finally(() => {
+    if (transicion !== t) return;
+    transicion = null;
+    delete document.documentElement.dataset.dir;
+  });
+}
+
+// Pinta al instante con lo que haya en caché y actualiza en segundo plano.
+// Solo espera a la red la primera vez que se abre algo que nunca se cargó.
+async function render(dir = '') {
+  const id = ++ultimoRender;
+  const vista = st.vista;
+  const fuente = FUENTES[vista]();
+  if (!fuente) return pintar(VISTAS[vista](), dir);
+
+  const enCache = cache.get(fuente.clave);
+  const fresco = traer(fuente);
+  if (enCache === undefined) {
+    let datos;
+    try {
+      datos = (await fresco) ?? cache.get(fuente.clave);
+    } catch {
+      if (id === ultimoRender) pintar('<p class="vacio">No se pudo cargar. Revisá la conexión y tocá la sección de nuevo.</p>', dir);
+      return;
+    }
+    if (id === ultimoRender) pintar(VISTAS[vista](datos), dir);
+    return;
+  }
+
+  pintar(VISTAS[vista](enCache), dir);
+  revalidar(fresco, enCache);
+}
+
+// Si el servidor trae algo distinto a lo que se ve, repinta sin animación (salvo que se haya cambiado de pantalla).
+function revalidar(fresco, visto) {
+  const id = ultimoRender, vista = st.vista;
+  fresco.then((datos) => {
+    if (id !== ultimoRender || datos === undefined || JSON.stringify(datos) === JSON.stringify(visto)) return;
+    if (document.activeElement?.matches('main input')) return; // no le saco el foco a quien está escribiendo
+    pintar(VISTAS[vista](datos), '');
+  }).catch(() => {});
 }
 
 // Si la app quedó abierta de un día para otro, al volver muestra el día nuevo.
 let ultimoHoy = hoy();
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && hoy() !== ultimoHoy) {
+  if (document.visibilityState !== 'visible') return;
+  if (hoy() !== ultimoHoy) {
     ultimoHoy = hoy();
-    if (st.vista === 'dia') { st.fecha = ultimoHoy; st.editando = false; render('adelante'); }
+    if (st.vista === 'dia') { st.fecha = ultimoHoy; st.editando = false; return render('adelante'); }
   }
+  // Al volver a la app solo trae lo último en segundo plano; no redibuja si nada cambió.
+  const f = FUENTES[st.vista]();
+  if (f) revalidar(traer(f), cache.get(f.clave));
 });
 
+async function iniciar() {
+  const base = cache.get('base');
+  if (base) {
+    Object.assign(st, base);
+    render();
+    cargarBase().then((cambio) => cambio && render()).catch(() => {});
+  } else {
+    try {
+      await cargarBase();
+    } catch {
+      $main.innerHTML = '<p class="vacio">No se pudo conectar. Revisá la conexión y volvé a abrir la app.</p>';
+      return;
+    }
+    render();
+  }
+  // Precarga el calendario y el gym para que la primera visita sea instantánea.
+  setTimeout(() => ['calendario', 'gym'].forEach((v) => { const f = FUENTES[v](); if (f && !cache.has(f.clave)) traer(f).catch(() => {}); }), 400);
+}
+
 if (!SUPABASE_URL) $main.innerHTML = '<p class="vacio">Falta configurar Supabase en config.js</p>';
-else cargarBase().then(() => render());
+else iniciar();
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

@@ -51,7 +51,7 @@ body {
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
 }
-/* Manchas de color detrás del vidrio; derivan muy lento. */
+/* Manchas de color detrás del vidrio. Quietas: moverlas obliga a recalcular el desenfoque en cada cuadro. */
 body::before {
   content: '';
   position: fixed;
@@ -63,9 +63,7 @@ body::before {
     radial-gradient(30% 24% at 88% 34%, color-mix(in srgb, var(--violeta) 45%, transparent), transparent 70%),
     radial-gradient(34% 26% at 28% 78%, color-mix(in srgb, var(--parcial) 40%, transparent), transparent 70%),
     radial-gradient(28% 22% at 80% 92%, color-mix(in srgb, var(--acento) 40%, transparent), transparent 70%);
-  animation: deriva 36s ease-in-out infinite alternate;
 }
-@keyframes deriva { to { transform: translate3d(5%, -4%, 0) rotate(10deg) scale(1.08); } }
 
 main {
   max-width: 560px;
@@ -339,16 +337,18 @@ nav button.activa svg { transform: translateY(-1px) scale(1.08); }
 }
 
 /* ---------- Transiciones entre pantallas ---------- */
+/* Los toques durante una transición llegan a la pantalla nueva en vez de perderse. */
+::view-transition { pointer-events: none; }
 ::view-transition-group(*) { animation-duration: 0.42s; animation-timing-function: var(--ease); }
 ::view-transition-group(pildora) { animation-timing-function: var(--resorte); animation-duration: 0.5s; }
 html[data-dir='adelante']::view-transition-old(main) { animation: 0.32s var(--ease) both salir-izq; }
 html[data-dir='adelante']::view-transition-new(main) { animation: 0.42s var(--ease) both entrar-der; }
 html[data-dir='atras']::view-transition-old(main) { animation: 0.32s var(--ease) both salir-der; }
 html[data-dir='atras']::view-transition-new(main) { animation: 0.42s var(--ease) both entrar-izq; }
-@keyframes salir-izq { to { transform: translateX(-18%); opacity: 0; filter: blur(4px); } }
-@keyframes salir-der { to { transform: translateX(18%); opacity: 0; filter: blur(4px); } }
-@keyframes entrar-der { from { transform: translateX(22%); opacity: 0; filter: blur(4px); } }
-@keyframes entrar-izq { from { transform: translateX(-22%); opacity: 0; filter: blur(4px); } }
+@keyframes salir-izq { to { transform: translateX(-18%);  opacity: 0; } }
+@keyframes salir-der { to { transform: translateX(18%);  opacity: 0; } }
+@keyframes entrar-der { from { transform: translateX(22%);  opacity: 0; } }
+@keyframes entrar-izq { from { transform: translateX(-22%);  opacity: 0; } }
 /* Calendario → día: el círculo tocado se convierte en el número grande. */
 html[data-dir='zoom'] .cabecera .num { view-transition-name: numdia; }
 html[data-dir='zoom']::view-transition-new(main) { animation: 0.45s var(--ease) both acercar; }
