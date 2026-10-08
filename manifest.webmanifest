@@ -3,7 +3,7 @@
   "short_name": "Rutina",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#e9edf5",
   "theme_color": "#2f52e0",
   "icons": [
     { "src": "/icon-180.png", "sizes": "180x180", "type": "image/png" },

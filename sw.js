@@ -1,7 +1,7 @@
 // Abre la app al instante desde la pantalla de inicio: sirve los archivos desde caché
 // y los actualiza en segundo plano (un deploy nuevo se ve en la apertura siguiente).
 // Los datos de Supabase no pasan por acá.
-const CACHE = 'rutina-v1';
+const CACHE = 'rutina-v2';
 const BASE = ['/', '/app.js', '/logica.js', '/config.js', '/style.css', '/manifest.webmanifest', '/icon-180.png'];
 
 self.addEventListener('install', (e) => {

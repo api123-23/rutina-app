@@ -40,14 +40,13 @@
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; background: var(--fondo); }
 body {
   margin: 0;
   min-height: 100dvh;
   font: 400 16px/1.45 'Archivo', -apple-system, system-ui, sans-serif;
   font-variation-settings: 'wdth' 100;
-  background: var(--fondo);
-  color: var(--tinta);
+  color: var(--tinta); /* el color de fondo va en html: si el body lo tuviera, taparía las manchas */
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
 }
@@ -58,12 +57,24 @@ body::before {
   inset: -25%;
   z-index: -1;
   pointer-events: none;
+  will-change: transform;
   background:
     radial-gradient(32% 26% at 18% 12%, color-mix(in srgb, var(--acento) 60%, transparent), transparent 70%),
     radial-gradient(30% 24% at 88% 34%, color-mix(in srgb, var(--violeta) 45%, transparent), transparent 70%),
     radial-gradient(34% 26% at 28% 78%, color-mix(in srgb, var(--parcial) 40%, transparent), transparent 70%),
     radial-gradient(28% 22% at 80% 92%, color-mix(in srgb, var(--acento) 40%, transparent), transparent 70%);
 }
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: calc(env(safe-area-inset-top) * 1.6);
+  z-index: 5;
+  pointer-events: none;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--acento) 50%, transparent), transparent);
+}
+@media (prefers-color-scheme: dark) { body::after { display: none; } }
 
 main {
   max-width: 560px;
@@ -81,14 +92,14 @@ ol { margin: 0; padding-left: 20px; }
 .vacio { color: var(--suave); margin: 12px 0; }
 
 /* ---------- Superficies de vidrio ---------- */
+/* El desenfoque en vivo (backdrop-filter) es lo más caro para el iPhone. Sobre el fondo de degradados
+   quietos no cambia nada visible, así que solo lo usa la barra inferior, que sí pasa sobre contenido. */
 section, .flechas button, .segmentos, .resumen > div, nav, button.sec, details.nuevo[open] {
   background: var(--vidrio);
-  -webkit-backdrop-filter: var(--blur);
-  backdrop-filter: var(--blur);
   border: 1px solid var(--vidrio-borde);
   box-shadow: var(--vidrio-sombra), inset 0 1px 0 var(--vidrio-brillo);
 }
-section { border-radius: 24px; padding: 16px; margin-bottom: 14px; }
+section { border-radius: 24px; padding: 16px; margin-bottom: 14px; content-visibility: auto; contain-intrinsic-size: auto 260px; }
 
 button {
   font: inherit;
@@ -158,9 +169,9 @@ input:focus { border-color: var(--acento); outline: none; box-shadow: 0 0 0 4px 
   content: '';
   position: absolute;
   inset: -4px 0;
-  background: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.85) 50%, transparent 65%);
-  mix-blend-mode: overlay;
+  background: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%);
   animation: destello 1.4s 0.5s var(--ease) both;
+  will-change: transform;
   pointer-events: none;
 }
 @keyframes destello { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
@@ -320,6 +331,8 @@ nav {
   padding: 6px;
   border-radius: 28px;
   background: var(--vidrio-fuerte);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
 }
 nav button { position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 7px 0; color: var(--suave); font-size: 0.72rem; font-weight: 600; border-radius: 22px; }
 nav svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.4s var(--resorte); }
@@ -340,6 +353,8 @@ nav button.activa svg { transform: translateY(-1px) scale(1.08); }
 /* Los toques durante una transición llegan a la pantalla nueva en vez de perderse. */
 ::view-transition { pointer-events: none; }
 ::view-transition-group(*) { animation-duration: 0.42s; animation-timing-function: var(--ease); }
+::view-transition-group(root), ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+::view-transition-group(main) { animation: none; }
 ::view-transition-group(pildora) { animation-timing-function: var(--resorte); animation-duration: 0.5s; }
 html[data-dir='adelante']::view-transition-old(main) { animation: 0.32s var(--ease) both salir-izq; }
 html[data-dir='adelante']::view-transition-new(main) { animation: 0.42s var(--ease) both entrar-der; }
