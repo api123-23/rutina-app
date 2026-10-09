@@ -1,8 +1,8 @@
 // Archivos de la app: primero la red (así cada deploy, incluido el index.html que iOS lee al
 // instalar, se ve en la próxima apertura); si la red tarda más de 1,5 s o no hay señal, la copia guardada.
 // Tipografías de Google: desde caché (no cambian). Los datos de Supabase no pasan por acá.
-const CACHE = 'rutina-v3';
-const BASE = ['/', '/app.js', '/logica.js', '/config.js', '/style.css', '/manifest.webmanifest', '/icon-180.png'];
+const CACHE = 'rutina-v4';
+const BASE = ['/', '/app.js', '/logica.js', '/calculadora.js', '/config.js', '/style.css', '/manifest.webmanifest', '/icon-180.png'];
 const ESPERA_RED = 1500;
 
 self.addEventListener('install', (e) => {

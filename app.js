@@ -1,11 +1,14 @@
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { COMIDAS, CHECKS, fechaISO, deISO, esGym, estadoDia, celdasMes } from './logica.js';
+import { vistaCalculadora, cambioCalculadora, clickCalculadora } from './calculadora.js';
 
 const $main = document.querySelector('main');
 const hoy = () => fechaISO(new Date());
 const NOMBRE_DIA = { 1: 'Lunes', 3: 'Miércoles', 5: 'Viernes' };
 const LISTAS = { hipopresivos: 'Hipopresivos', estiramientos: 'Estiramientos / postura' };
 const ORDEN_VISTAS = ['dia', 'calendario', 'gym', 'plan'];
+// La calculadora vive dentro de Plan: en la barra inferior se marca Plan.
+const pestana = (vista) => (vista === 'calculadora' ? 'plan' : vista);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
 const fechaCorta = (f) => deISO(f).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -84,6 +87,7 @@ const FUENTES = {
     return ids.length ? { clave: `gym:${ids}`, ruta: `registros_ejercicio?ejercicio_id=in.(${ids})&order=fecha.desc,id.desc` } : null;
   },
   plan: () => null,
+  calculadora: () => null,
 };
 
 // Dieta, listas y ejercicios. Devuelve true si cambió algo.
@@ -248,19 +252,16 @@ function botonesOrden(tabla, id) {
     <button data-acc="borrar" data-tabla="${tabla}" data-id="${id}" aria-label="Borrar">✕</button></span>`;
 }
 
-// Artifact de claude.ai con la calculadora de volumen. Es privado: abre en Safari con la sesión de claude.ai.
-const CALCULADORA = 'https://claude.ai/artifact/VQYa18FJ6g2rRRxXpUTVLd';
-
 const inputGramos = '<input name="gramos" type="number" inputmode="decimal" step="any" min="0" placeholder="g">';
 
 function vistaPlan() {
   const grupos = [...new Set(st.dieta.map((i) => i.componente))];
   return `
     <h1>Plan</h1>
-    <a class="enlace" href="${CALCULADORA}" target="_blank" rel="noopener">
+    <button class="enlace" data-acc="abrir-calc">
       <span><b>Volumen de Ignacio</b><small>Calculadora de cantidades según tu peso</small></span>
-      <span class="flecha" aria-hidden="true">↗</span>
-    </a>
+      <span class="flecha" aria-hidden="true">›</span>
+    </button>
     <datalist id="grupos">${grupos.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
     ${COMIDAS.map((c) => `
       <section><h2>${cap(c)}</h2>
@@ -384,6 +385,14 @@ const acciones = {
     b.style.viewTransitionName = 'numdia'; // el círculo del calendario se transforma en el número grande
     return 'zoom';
   },
+  'abrir-calc': () => {
+    st.vista = 'calculadora';
+    return 'adelante';
+  },
+  'volver-plan': () => {
+    st.vista = 'plan';
+    return 'atras';
+  },
   'gym-dia': (b) => {
     st.gymDia = Number(b.dataset.dia);
     return 'seg';
@@ -416,12 +425,13 @@ const altas = {
 document.addEventListener('click', async (e) => {
   const tab = e.target.closest('[data-vista]');
   if (tab) {
-    const antes = ORDEN_VISTAS.indexOf(st.vista);
+    const antes = ORDEN_VISTAS.indexOf(pestana(st.vista));
     st.vista = tab.dataset.vista;
     if (st.vista === 'dia') { st.fecha = hoy(); st.editando = false; }
     const despues = ORDEN_VISTAS.indexOf(st.vista);
     return render(despues > antes ? 'adelante' : despues < antes ? 'atras' : '');
   }
+  if (clickCalculadora(e, $main)) return;
   const b = e.target.closest('[data-acc]');
   if (!b) return;
   b.disabled = true;
@@ -435,6 +445,11 @@ document.addEventListener('click', async (e) => {
 
 $main.addEventListener('change', (e) => {
   if (e.target.dataset.campo) guardarCampo(e.target);
+  else cambioCalculadora(e, $main);
+});
+// La calculadora recalcula mientras escribís.
+$main.addEventListener('input', (e) => {
+  if (e.target.dataset.calc && e.target.type === 'number') cambioCalculadora(e, $main);
 });
 
 $main.addEventListener('submit', async (e) => {
@@ -451,7 +466,7 @@ $main.addEventListener('submit', async (e) => {
 });
 
 // ---------- Pintado ----------
-const VISTAS = { dia: vistaDia, calendario: vistaCalendario, plan: vistaPlan, gym: vistaGym };
+const VISTAS = { dia: vistaDia, calendario: vistaCalendario, plan: vistaPlan, gym: vistaGym, calculadora: vistaCalculadora };
 const sinMovimiento = matchMedia('(prefers-reduced-motion: reduce)');
 let ultimoRender = 0;
 let transicion = null;
@@ -459,7 +474,7 @@ let transicion = null;
 function pintar(html, dir) {
   const aplicar = () => {
     $main.innerHTML = html;
-    const activa = document.querySelector(`[data-vista="${st.vista}"]`);
+    const activa = document.querySelector(`[data-vista="${pestana(st.vista)}"]`);
     document.querySelectorAll('[data-vista]').forEach((b) => b.classList.toggle('activa', b === activa));
     activa.prepend(document.querySelector('.pildora'));
   };
