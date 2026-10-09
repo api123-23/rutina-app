@@ -248,12 +248,19 @@ function botonesOrden(tabla, id) {
     <button data-acc="borrar" data-tabla="${tabla}" data-id="${id}" aria-label="Borrar">✕</button></span>`;
 }
 
+// Artifact de claude.ai con la calculadora de volumen. Es privado: abre en Safari con la sesión de claude.ai.
+const CALCULADORA = 'https://claude.ai/artifact/VQYa18FJ6g2rRRxXpUTVLd';
+
 const inputGramos = '<input name="gramos" type="number" inputmode="decimal" step="any" min="0" placeholder="g">';
 
 function vistaPlan() {
   const grupos = [...new Set(st.dieta.map((i) => i.componente))];
   return `
     <h1>Plan</h1>
+    <a class="enlace" href="${CALCULADORA}" target="_blank" rel="noopener">
+      <span><b>Volumen de Ignacio</b><small>Calculadora de cantidades según tu peso</small></span>
+      <span class="flecha" aria-hidden="true">↗</span>
+    </a>
     <datalist id="grupos">${grupos.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
     ${COMIDAS.map((c) => `
       <section><h2>${cap(c)}</h2>

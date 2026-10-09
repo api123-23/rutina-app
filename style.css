@@ -94,7 +94,7 @@ ol { margin: 0; padding-left: 20px; }
 /* ---------- Superficies de vidrio ---------- */
 /* El desenfoque en vivo (backdrop-filter) es lo más caro para el iPhone. Sobre el fondo de degradados
    quietos no cambia nada visible, así que solo lo usa la barra inferior, que sí pasa sobre contenido. */
-section, .flechas button, .segmentos, .resumen > div, nav, button.sec, details.nuevo[open] {
+section, .enlace, .flechas button, .segmentos, .resumen > div, nav, button.sec, details.nuevo[open] {
   background: var(--vidrio);
   border: 1px solid var(--vidrio-borde);
   box-shadow: var(--vidrio-sombra), inset 0 1px 0 var(--vidrio-brillo);
@@ -297,6 +297,37 @@ details.nuevo[open] { padding: 10px 12px 12px; color: var(--tinta); box-shadow: 
 .grupo-nuevo { flex-wrap: wrap; margin-top: 8px; }
 .grupo-nuevo [name='grupo'] { flex: 1 1 100%; }
 main > form input { background: var(--vidrio-fuerte); border-color: var(--vidrio-borde); }
+
+/* Acceso a la calculadora (artifact) */
+.enlace {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 14px;
+  border-radius: 24px;
+  color: inherit;
+  text-decoration: none;
+  transition: transform 0.35s var(--resorte);
+}
+.enlace:active { transform: scale(0.97); transition-duration: 0.08s; }
+.enlace > span:first-child { display: flex; flex-direction: column; gap: 2px; }
+.enlace b { font-variation-settings: var(--ancho); font-weight: 800; font-size: 1.15rem; }
+.enlace small { color: var(--suave); font-size: 0.88rem; }
+.enlace .flecha {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--sobre-acento);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--acento) 85%, white), var(--acento));
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--acento) 70%, transparent);
+}
 
 /* ---------- Gym ---------- */
 .segmentos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: 18px; margin-bottom: 14px; }
